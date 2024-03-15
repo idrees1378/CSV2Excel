@@ -3,7 +3,7 @@
 Builder: This module is called from outside and calls builder to load csv and convert into xlsx
 """
 import sys
-import src.csv_loader as loader
+import src.csv2excel as loader
 
 def __init():
     if len(sys.argv) < 2:
