@@ -20,7 +20,7 @@ pip install openpyxl
 ## Usage
 cd to the root directory and from the command-line run:
 ```bash
-python builder.py {path_to_csv.csv}
+python csv2excel.py {path_to_csv.csv}
 ```
 
 Output file will be saved at the same path with a suffix of "-output.xlsx"
