@@ -1,3 +1,10 @@
 .env/
 change_job.csv
 change_job.xlsx
+*cpython-310.pyc
+
+change_job_eib-output.xlsx
+
+.DS_Store
+
+.vscode/launch.json
