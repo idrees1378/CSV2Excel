@@ -1,103 +1,91 @@
-
-from enum import Enum
 from pathlib import Path
 
 from openpyxl import load_workbook
 
+from src.constants import (
+    BusinessProcessType,
+    BusinessProcessTypeToName,
+    BusinessProcessTypeToProcessInstruction,
+)
 from src.eib_builder_logger import EibBuilderLogger
 from src.mappings.mapper import Map
-
-
-class BusinessProcessType(Enum):
-    JOB_CHANGE = 1
-    COMPENSATION = 2
-    CHANGE_ORG = 3
-    ASSIGN_PAYGROUP = 4
-    CHANGE_PERSONAL_INFO = 5
-    ASSIGN_ROLES = 6
-
 
 logger = EibBuilderLogger()
 
 
 class EibBuilder:
+    DATA_ROW_START = 6  # data cell starts on the 6th row after header finishes off in Chane_job_sample.xlsx
+
     def __init__(self):
         pass
-
-
 
     @classmethod
     def build(
         cls,
         data_records: list[Map],
         output_file_name: str = "change_job_eib",
-        populate_data: list[BusinessProcessType] = [BusinessProcessType.JOB_CHANGE],
+        business_process_types: list[BusinessProcessType] = [
+            BusinessProcessType.CHANGE_JOB
+        ],
     ) -> None:
         """
         loads given csv file into object by calling __load_csv().
         """
         try:
-            if not data_records:
+            if not data_records or len(data_records) < 1:
+                error_message = "No input records provided to convert to EIB. Please provide valid data records."
+                logger.log_error(error_message)
                 return
             build_eib = EibBuilder()
             workbook = load_workbook(
                 filename="./templates/template_change_job_v42.1.xlsx"
             )
-            if BusinessProcessType.JOB_CHANGE in populate_data:
-                build_eib.set_change_job_data(workbook, data_records)
-            if BusinessProcessType.COMPENSATION in populate_data:
-                build_eib.set_compensation_data(workbook, data_records)
-            if BusinessProcessType.CHANGE_ORG in populate_data:
-                build_eib.set_change_org_data(workbook, data_records)
-            if BusinessProcessType.ASSIGN_PAYGROUP in populate_data:
-                build_eib.set_assign_paygroup_data(workbook, data_records)
-            if BusinessProcessType.CHANGE_PERSONAL_INFO in populate_data:
-                build_eib.set_change_personal_info_data(workbook, data_records)
-            if BusinessProcessType.ASSIGN_ROLES in populate_data:
-                build_eib.set_assign_roles_data(workbook, data_records)
+            for process_type in business_process_types:
+                build_eib.populate_data(workbook, data_records, process_type)
 
-            workbook.save(build_eib.__xlsx_fname(output_file_name))
+            workbook.save(build_eib.generate_output_filename(output_file_name))
 
             logger.log_messages(["Successfully created xlsx"])
 
         except Exception as error:
-            print(error.args)
+            logger.log_error(f"Error occurred: {error}")
 
-    def set_compensation_data(self, workbook, records: list):
-        print("not implemented yet - set_compensation_data")
-
-    def set_change_org_data(self, workbook, records: list):
-        print("not implemented yet - set_change_org_data")
-
-    def set_assign_paygroup_data(self, workbook, records: list):
-        print("not implemented yet - set_assign_paygroup_data")
-
-    def set_change_personal_info_data(self, workbook, records: list):
-        print("not implemented yet - set_change_personal_info_data")
-
-    def set_assign_roles_data(self, workbook, records: list):
-        print("not implemented yet - set_assign_roles_data")
-
-    def set_change_job_data(self, workbook, records: list):
-        worksheet_change_job = workbook["Change Job"]
-        header = worksheet_change_job[5]
-        data_row = 6  # data cell starts on the 6th row after header finishes off in Chane_job_sample.xlsx
+    def populate_data(
+        self, workbook, records: list[Map], process_type: BusinessProcessType
+    ) -> None:
+        worksheet = workbook[BusinessProcessTypeToName[process_type]]
+        excel_header = worksheet and worksheet[5]
+        data_row = EibBuilder.DATA_ROW_START
+        row_count = 1
 
         for record in records:
-            for header_cell in header:
-                value = record.wdmap.get(header_cell.value, None)
-
-                if value is None:
-                    continue
-
-                worksheet_change_job.cell(
-                    row=data_row, column=header_cell.column
-                ).value = value
+            mappings = record.wdmap(process_type)
+            self.populate_excel(worksheet, mappings, row_count, excel_header, data_row)
             data_row += 1
         # set business process parameter for change job
         worksheet_overview = workbook["Overview"]
-        worksheet_overview.cell(row=7, column=3).value = "Automatic Processing"
+        worksheet_overview.cell(
+            row=BusinessProcessTypeToProcessInstruction[process_type].get("row"),
+            column=3,
+        ).value = BusinessProcessTypeToProcessInstruction[process_type].get("value")
 
-    def __xlsx_fname(self, ref_fname: str):
+    def populate_excel(self, work_sheet, mappings, row_count, excel_header, data_row):
+        for header_cell in excel_header:
+            if header_cell.column_letter == "B":
+                work_sheet.cell(
+                    row=data_row, column=header_cell.column
+                ).value = row_count
+                continue
+            value = mappings.get(header_cell.column_letter, None)
+
+            if value is None:
+                continue
+
+            work_sheet.cell(row=data_row, column=header_cell.column).value = value
+
+    def generate_output_filename(self, ref_fname: str) -> str:
+        """
+        Generates output filename with appropriate suffix.
+        """
         fname = Path(ref_fname).stem
-        return Path(fname + "-output").with_suffix(".xlsx")
+        return str(Path(fname + "-output").with_suffix(".xlsx"))
